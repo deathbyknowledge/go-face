@@ -7,8 +7,9 @@ package face
 // #include "facerec.h"
 import "C"
 import (
+	"embed"
 	"image"
-	"io/ioutil"
+	"io"
 	"math"
 	"os"
 	"unsafe"
@@ -22,8 +23,11 @@ const (
 	// We get first 2^20 elements of array of shapes
 	// (68 shapes per face in case of shape_predictor_68_face_landmarks.dat.bz2).
 	// 68*shapeLen is bigger than rectLen and descrLen.
-	maxElements  = 1 << 20
-	maxFaceLimit = maxElements / (68 * shapeLen)
+	maxElements     = 1 << 20
+	maxFaceLimit    = maxElements / (68 * shapeLen)
+	shape_predictor = "shape_predictor_5_face_landmarks.dat"
+	resnet          = "dlib_face_recognition_resnet_model_v1.dat"
+	cnn_resnet      = "mmod_human_face_detector.dat"
 )
 
 // A Recognizer creates face descriptors for provided images and
@@ -65,7 +69,45 @@ func NewWithShape(r image.Rectangle, s []image.Point, d Descriptor) Face {
 func NewRecognizer(modelDir string) (rec *Recognizer, err error) {
 	cModelDir := C.CString(modelDir)
 	defer C.free(unsafe.Pointer(cModelDir))
-	ptr := C.facerec_init(cModelDir)
+	ptr := C.facerec_init_from_dir(cModelDir)
+
+	if ptr.err_str != nil {
+		defer C.facerec_free(ptr)
+		defer C.free(unsafe.Pointer(ptr.err_str))
+		err = makeError(C.GoString(ptr.err_str), int(ptr.err_code))
+		return
+	}
+
+	rec = &Recognizer{ptr}
+	return
+}
+
+func NewRecognizerFromFS(fs embed.FS) (rec *Recognizer, err error) {
+	model1, err := fs.ReadFile(shape_predictor)
+	if err != nil {
+		return
+	}
+
+	model2, err := fs.ReadFile(resnet)
+	if err != nil {
+		return
+	}
+
+	model3, err := fs.ReadFile(cnn_resnet)
+	if err != nil {
+		return
+	}
+
+	cModel1 := (*C.uint8_t)(&model1[0])
+	cModel1Len := C.int(len(model1))
+
+	cModel2 := (*C.uint8_t)(&model2[0])
+	cModel2Len := C.int(len(model2))
+
+	cModel3 := (*C.uint8_t)(&model3[0])
+	cModel3Len := C.int(len(model3))
+
+	ptr := C.facerec_init_from_memory(cModel1, cModel1Len, cModel2, cModel2Len, cModel3, cModel3Len)
 
 	if ptr.err_str != nil {
 		defer C.facerec_free(ptr)
@@ -159,7 +201,7 @@ func (rec *Recognizer) recognizeFile(type_ int, imgPath string, maxFaces int) (f
 		return
 	}
 	defer fd.Close()
-	imgData, err := ioutil.ReadAll(fd)
+	imgData, err := io.ReadAll(fd)
 	if err != nil {
 		return
 	}

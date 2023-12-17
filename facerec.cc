@@ -66,10 +66,23 @@ public:
 		std::string shape_predictor_path = dir + "/shape_predictor_5_face_landmarks.dat";
 		std::string resnet_path = dir + "/dlib_face_recognition_resnet_model_v1.dat";
 		std::string cnn_resnet_path = dir + "/mmod_human_face_detector.dat";
+		std::vector<uint8_t> buf = {0, 0, 0, 0};
 
-		deserialize(shape_predictor_path) >> sp_;
+		deserialize(buf) >> sp_;
 		deserialize(resnet_path) >> net_;
 		deserialize(cnn_resnet_path) >> cnn_net_;
+
+		jittering = 0;
+		size = 150;
+		padding = 0.25;
+	}
+
+	FaceRec(std::vector<uint8_t> &shape_predictor, std::vector<uint8_t> &resnet, std::vector<uint8_t> &cnn_resnet) {
+		detector_ = get_frontal_face_detector();
+
+		deserialize(shape_predictor) >> sp_;
+		deserialize(resnet) >> net_;
+		deserialize(cnn_resnet) >> cnn_net_;
 
 		jittering = 0;
 		size = 150;
@@ -149,7 +162,7 @@ private:
 
 // Plain C interface for Go.
 
-facerec* facerec_init(const char* model_dir) {
+facerec* facerec_init_from_dir(const char* model_dir) {
 	facerec* rec = (facerec*)calloc(1, sizeof(facerec));
 	try {
 		FaceRec* cls = new FaceRec(model_dir);
@@ -163,6 +176,25 @@ facerec* facerec_init(const char* model_dir) {
 	}
 	return rec;
 }
+
+facerec* facerec_init_from_memory(uint8_t* model1, int model1_len, uint8_t* model2, int model2_len, uint8_t* model3, int model3_len) {
+	facerec* rec = (facerec*)calloc(1, sizeof(facerec));
+	std::vector<uint8_t> m1(model1, model1 + model1_len);
+	std::vector<uint8_t> m2(model2, model2 + model2_len);
+	std::vector<uint8_t> m3(model3, model3 + model3_len);
+	try {
+		FaceRec* cls = new FaceRec(m1, m2, m3);
+		rec->cls = (void*)cls;
+	} catch(serialization_error& e) {
+		rec->err_str = strdup(e.what());
+		rec->err_code = SERIALIZATION_ERROR;
+	} catch (std::exception& e) {
+		rec->err_str = strdup(e.what());
+		rec->err_code = UNKNOWN_ERROR;
+	}
+	return rec;
+}
+
 void facerec_config(facerec* rec, unsigned long size, double padding, int jittering) {
 	FaceRec* cls = (FaceRec*)(rec->cls);
 	cls->Config(size,padding,jittering);
