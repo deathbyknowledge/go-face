@@ -66,9 +66,8 @@ public:
 		std::string shape_predictor_path = dir + "/shape_predictor_5_face_landmarks.dat";
 		std::string resnet_path = dir + "/dlib_face_recognition_resnet_model_v1.dat";
 		std::string cnn_resnet_path = dir + "/mmod_human_face_detector.dat";
-		std::vector<uint8_t> buf = {0, 0, 0, 0};
 
-		deserialize(buf) >> sp_;
+		deserialize(shape_predictor_path) >> sp_;
 		deserialize(resnet_path) >> net_;
 		deserialize(cnn_resnet_path) >> cnn_net_;
 
